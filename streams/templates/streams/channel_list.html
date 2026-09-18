@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>spltube</title>
+</head>
+<body>
+    <h1>spltube</h1>
+
+    <h2>配信中</h2>
+    <ul>
+        {% for status in statuses %}
+            {% if status.is_live %}
+            <li>
+                {% if status.which_channel.platform == "twitch" %}
+                <a href="https://twitch.tv/{{ status.which_channel.channel_id }}" target="_blank">
+                {% else %}
+                <a href="https://www.youtube.com/channel/{{ status.which_channel.channel_id }}/live" target="_blank">
+                {% endif %}
+                    <img src="{{ status.which_channel.channel_icon }}" width="40">
+                    {{ status.which_channel.channel_name }}
+                    ({{ status.viewer_count }}人視聴中)
+                </a>
+            </li>
+            {% endif %}
+        {% endfor %}
+    </ul>
+
+    <h2>新着動画</h2>
+    <ul>
+        {% for status in statuses %}
+            {% if status.new_video_exist %}
+            <li>
+                <a href="https://www.youtube.com/watch?v={{ status.latest_video_id }}" target="_blank">
+                    <img src="{{ status.which_channel.channel_icon }}" width="40">
+                    {{ status.which_channel.channel_name }}
+                </a>
+            </li>
+            {% endif %}
+        {% endfor %}
+    </ul>
+
+    <h2>新着ショート</h2>
+    <ul>
+        {% for status in statuses %}
+            {% if status.new_short_exist %}
+            <li>
+                <a href="https://www.youtube.com/shorts/{{ status.latest_short_id }}" target="_blank">
+                    <img src="{{ status.which_channel.channel_icon }}" width="40">
+                    {{ status.which_channel.channel_name }}
+                </a>
+            </li>
+            {% endif %}
+        {% endfor %}
+    </ul>
+</body>
+</html>
