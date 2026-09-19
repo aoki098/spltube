@@ -150,6 +150,16 @@
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
         }
 
+        .video-card .card-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--light-green);
+            display: block;
+            margin: 10px 0 8px 10px;
+        }
+
         .video-card .thumb {
             width: 100%;
             aspect-ratio: 16 / 9;
@@ -164,28 +174,31 @@
             line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
-            padding: 10px 10px 6px;
+            padding: 10px 10px 4px;
             font-size: 0.85rem;
             font-weight: 700;
             line-height: 1.4;
             min-height: 2.4em;
         }
 
-        .video-card .channel-row {
-            display: flex;
-            align-items: center;
-            gap: 6px;
+        .video-card .by-line {
+            display: block;
             padding: 0 10px 10px;
             font-size: 0.75rem;
             color: var(--text-dim);
         }
 
-        .video-card .channel-row img {
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 2px solid var(--light-green);
+        footer {
+            background: #ffffff;
+            padding: 20px 16px 30px;
+            text-align: center;
+        }
+
+        footer p {
+            max-width: 1000px;
+            margin: 0 auto;
+            font-size: 0.72rem;
+            color: var(--text-dim);
         }
     </style>
 </head>
@@ -226,12 +239,10 @@
                         {% if status.new_video_exist %}
                         <li>
                             <a class="card video-card" href="https://www.youtube.com/watch?v={{ status.latest_video_id }}" target="_blank">
+                                <img class="card-icon" src="{{ status.which_channel.channel_icon }}" alt="">
                                 <img class="thumb" src="{{ status.latest_video_thumbnail }}" alt="">
                                 <span class="video-title">{{ status.latest_video_title }}</span>
-                                <span class="channel-row">
-                                    <img src="{{ status.which_channel.channel_icon }}" alt="">
-                                    {{ status.which_channel.channel_name }}
-                                </span>
+                                <span class="by-line">by {{ status.which_channel.channel_name }}</span>
                             </a>
                         </li>
                         {% endif %}
@@ -248,12 +259,10 @@
                         {% if status.new_short_exist %}
                         <li>
                             <a class="card video-card" href="https://www.youtube.com/shorts/{{ status.latest_short_id }}" target="_blank">
+                                <img class="card-icon" src="{{ status.which_channel.channel_icon }}" alt="">
                                 <img class="thumb" src="{{ status.latest_short_thumbnail }}" alt="">
                                 <span class="video-title">{{ status.latest_short_title }}</span>
-                                <span class="channel-row">
-                                    <img src="{{ status.which_channel.channel_icon }}" alt="">
-                                    {{ status.which_channel.channel_name }}
-                                </span>
+                                <span class="by-line">by {{ status.which_channel.channel_name }}</span>
                             </a>
                         </li>
                         {% endif %}
@@ -262,5 +271,9 @@
             </div>
         </div>
     </div>
+
+    <footer>
+        <p>本サイトは非公式のファンサイトです。掲載しているチャンネル名・アイコン・動画情報の著作権は各配信者に帰属します。</p>
+    </footer>
 </body>
 </html>
