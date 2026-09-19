@@ -2,24 +2,146 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>spltube</title>
+    <style>
+        :root {
+            --bg: #14141f;
+            --card-bg: #1e1e2e;
+            --orange: #ff5a1f;
+            --purple: #b026ff;
+            --teal: #14e6c8;
+            --text: #f0f0f5;
+            --text-dim: #9a9ab0;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding: 0 16px 60px;
+            background: var(--bg);
+            color: var(--text);
+            font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
+        }
+
+        header {
+            padding: 32px 0 16px;
+            text-align: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 2.2rem;
+            font-weight: 900;
+            letter-spacing: 0.05em;
+            background: linear-gradient(90deg, var(--orange), var(--purple));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            display: inline-block;
+        }
+
+        h2 {
+            max-width: 1000px;
+            margin: 40px auto 16px;
+            padding-left: 12px;
+            border-left: 6px solid var(--teal);
+            font-size: 1.3rem;
+        }
+
+        .grid {
+            max-width: 1000px;
+            margin: 0 auto;
+            list-style: none;
+            padding: 0;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 14px;
+        }
+
+        .card {
+            display: block;
+            background: var(--card-bg);
+            border-radius: 14px;
+            padding: 14px;
+            text-decoration: none;
+            color: var(--text);
+            border: 1px solid #2f2f45;
+            transition: transform 0.15s ease, border-color 0.15s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-3px);
+            border-color: var(--purple);
+        }
+
+        .card img {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--orange);
+            display: block;
+            margin-bottom: 10px;
+        }
+
+        .card .name {
+            font-weight: 700;
+            font-size: 0.95rem;
+            display: block;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .live-badge {
+            display: inline-block;
+            margin-top: 6px;
+            padding: 3px 8px;
+            border-radius: 999px;
+            background: var(--orange);
+            color: #fff;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        .live-badge::before {
+            content: "";
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #fff;
+            margin-right: 5px;
+        }
+
+        .empty {
+            max-width: 1000px;
+            margin: 0 auto;
+            color: var(--text-dim);
+            font-size: 0.9rem;
+        }
+    </style>
 </head>
 <body>
-    <h1>spltube</h1>
+    <header>
+        <h1>spltube</h1>
+    </header>
 
     <h2>配信中</h2>
-    <ul>
+    <ul class="grid">
         {% for status in statuses %}
             {% if status.is_live %}
             <li>
                 {% if status.which_channel.platform == "twitch" %}
-                <a href="https://twitch.tv/{{ status.which_channel.channel_id }}" target="_blank">
+                <a class="card" href="https://twitch.tv/{{ status.which_channel.channel_id }}" target="_blank">
                 {% else %}
-                <a href="https://www.youtube.com/channel/{{ status.which_channel.channel_id }}/live" target="_blank">
+                <a class="card" href="https://www.youtube.com/channel/{{ status.which_channel.channel_id }}/live" target="_blank">
                 {% endif %}
-                    <img src="{{ status.which_channel.channel_icon }}" width="40">
-                    {{ status.which_channel.channel_name }}
-                    ({{ status.viewer_count }}人視聴中)
+                    <img src="{{ status.which_channel.channel_icon }}" alt="">
+                    <span class="name">{{ status.which_channel.channel_name }}</span>
+                    <span class="live-badge">LIVE {{ status.viewer_count }}人</span>
                 </a>
             </li>
             {% endif %}
@@ -27,13 +149,13 @@
     </ul>
 
     <h2>新着動画</h2>
-    <ul>
+    <ul class="grid">
         {% for status in statuses %}
             {% if status.new_video_exist %}
             <li>
-                <a href="https://www.youtube.com/watch?v={{ status.latest_video_id }}" target="_blank">
-                    <img src="{{ status.which_channel.channel_icon }}" width="40">
-                    {{ status.which_channel.channel_name }}
+                <a class="card" href="https://www.youtube.com/watch?v={{ status.latest_video_id }}" target="_blank">
+                    <img src="{{ status.which_channel.channel_icon }}" alt="">
+                    <span class="name">{{ status.which_channel.channel_name }}</span>
                 </a>
             </li>
             {% endif %}
@@ -41,13 +163,13 @@
     </ul>
 
     <h2>新着ショート</h2>
-    <ul>
+    <ul class="grid">
         {% for status in statuses %}
             {% if status.new_short_exist %}
             <li>
-                <a href="https://www.youtube.com/shorts/{{ status.latest_short_id }}" target="_blank">
-                    <img src="{{ status.which_channel.channel_icon }}" width="40">
-                    {{ status.which_channel.channel_name }}
+                <a class="card" href="https://www.youtube.com/shorts/{{ status.latest_short_id }}" target="_blank">
+                    <img src="{{ status.which_channel.channel_icon }}" alt="">
+                    <span class="name">{{ status.which_channel.channel_name }}</span>
                 </a>
             </li>
             {% endif %}
