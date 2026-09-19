@@ -61,10 +61,13 @@ def get_youtube_concurrent_viewers(youtube, video_id):
 
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
 YT_NS = "{http://www.youtube.com/xml/schemas/2015}"
+MEDIA_NS = "{http://search.yahoo.com/mrss/}"
+
+EMPTY_UPLOAD = {"is_recent": False, "video_id": "", "title": "", "thumbnail": ""}
 
 
 def has_recent_upload(playlist_id):
-    # 再生リストのRSSフィードを見て最新動画の投稿日時を調べる
+    # 再生リストのRSSフィードを見て最新動画の投稿日時・タイトル・サムネを調べる
     # 再生リストに最新の動画があるかどうか
     try:
         resp = requests.get(
@@ -73,19 +76,26 @@ def has_recent_upload(playlist_id):
         )
         root = ET.fromstring(resp.content)
     except Exception:
-        return False, ""
+        return EMPTY_UPLOAD
 
     entry = root.find(f"{ATOM_NS}entry")
     if entry is None:
-        return False, ""
-
-    video_id = entry.find(f"{YT_NS}videoId").text
+        return EMPTY_UPLOAD
 
     # 24時間以内の投稿だったらTrueを返す
     published_at = entry.find(f"{ATOM_NS}published").text
     published_time = datetime.fromisoformat(published_at)
     is_recent = datetime.now(timezone.utc) - published_time < timedelta(hours=24)
-    return is_recent, (video_id if is_recent else "")
+
+    if not is_recent:
+        return EMPTY_UPLOAD
+
+    video_id = entry.find(f"{YT_NS}videoId").text
+    title = entry.find(f"{ATOM_NS}title").text
+    thumbnail_el = entry.find(f"{MEDIA_NS}group/{MEDIA_NS}thumbnail")
+    thumbnail = thumbnail_el.get("url") if thumbnail_el is not None else ""
+
+    return {"is_recent": True, "video_id": video_id, "title": title, "thumbnail": thumbnail}
 
 #配信中か新着道があるかをDBに記録する
 class Command(BaseCommand):
@@ -103,16 +113,14 @@ class Command(BaseCommand):
                 is_live, viewer_count = get_twitch_stream(
                     channel.channel_id, twitch_client_id, twitch_token
                 )
-                new_video_exist = False
-                new_short_exist = False
-                latest_video_id = ""
-                latest_short_id = ""
+                video = EMPTY_UPLOAD
+                short = EMPTY_UPLOAD
             else:
                 video_playlist_id = channel.channel_id.replace("UC", "UULF", 1)
                 short_playlist_id = channel.channel_id.replace("UC", "UUSH", 1)
 
-                new_video_exist, latest_video_id = has_recent_upload(video_playlist_id)
-                new_short_exist, latest_short_id = has_recent_upload(short_playlist_id)
+                video = has_recent_upload(video_playlist_id)
+                short = has_recent_upload(short_playlist_id)
 
                 is_live, video_id = check_youtube_live(channel.channel_id)
                 if is_live and video_id:
@@ -125,15 +133,19 @@ class Command(BaseCommand):
                 which_channel=channel,
                 defaults={
                     "is_live": is_live,
-                    "new_video_exist": new_video_exist,
-                    "new_short_exist": new_short_exist,
-                    "latest_video_id": latest_video_id,
-                    "latest_short_id": latest_short_id,
+                    "new_video_exist": video["is_recent"],
+                    "new_short_exist": short["is_recent"],
+                    "latest_video_id": video["video_id"],
+                    "latest_video_title": video["title"],
+                    "latest_video_thumbnail": video["thumbnail"],
+                    "latest_short_id": short["video_id"],
+                    "latest_short_title": short["title"],
+                    "latest_short_thumbnail": short["thumbnail"],
                     "viewer_count": viewer_count,
                 },
             )
 
             self.stdout.write(
                 f"{channel.channel_name} ({channel.platform}): live={is_live}, "
-                f"video={new_video_exist}, short={new_short_exist}, viewers={viewer_count}"
+                f"video={video['is_recent']}, short={short['is_recent']}, viewers={viewer_count}"
             )

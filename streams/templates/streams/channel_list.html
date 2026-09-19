@@ -4,105 +4,126 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>spltube</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Mochiy+Pop+One&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #14141f;
-            --card-bg: #1e1e2e;
-            --orange: #ff5a1f;
-            --purple: #b026ff;
-            --teal: #14e6c8;
-            --text: #f0f0f5;
-            --text-dim: #9a9ab0;
+            --bg: #fbfbf7;
+            --card-bg: #ffffff;
+            --orange: #ff8a1e;
+            --teal: #1fae7a;
+            --red: #ef3d3d;
+            --light-green: #7fd9a8;
+            --text: #22262b;
+            --text-dim: #767b82;
+            --cute-font: "Mochiy Pop One", "Hiragino Sans", "Yu Gothic", sans-serif;
         }
 
         * { box-sizing: border-box; }
 
         body {
             margin: 0;
-            padding: 0 16px 60px;
-            background: var(--bg);
+            padding: 0;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle, rgba(31, 174, 122, 0.22) 10px, transparent 11px),
+                radial-gradient(circle, rgba(255, 138, 30, 0.20) 7px, transparent 8px),
+                radial-gradient(circle, rgba(31, 174, 122, 0.16) 5px, transparent 6px),
+                radial-gradient(circle, rgba(255, 138, 30, 0.14) 4px, transparent 5px);
+            background-size: 90px 90px, 70px 70px, 50px 50px, 40px 40px;
+            background-position: 0 0, 20px 35px, 55px 10px, 35px 60px;
             color: var(--text);
             font-family: "Hiragino Sans", "Yu Gothic", sans-serif;
         }
 
+        /* ヘッダー: 白背景+灰色の境界線、文字サイズに合わせた縦長のバー */
         header {
-            padding: 32px 0 16px;
+            background: #ffffff;
+            padding: 2px 0 4px;
             text-align: center;
         }
 
         h1 {
             margin: 0;
-            font-size: 2.2rem;
-            font-weight: 900;
-            letter-spacing: 0.05em;
-            background: linear-gradient(90deg, var(--orange), var(--purple));
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            display: inline-block;
+            font-size: 1.05rem;
+            font-family: var(--cute-font);
+            color: var(--teal);
+        }
+
+        .layout {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 16px 60px;
         }
 
         h2 {
-            max-width: 1000px;
-            margin: 40px auto 16px;
+            margin: 40px 0 16px;
             padding-left: 12px;
             border-left: 6px solid var(--teal);
-            font-size: 1.3rem;
+            font-size: 1.2rem;
+            font-family: var(--cute-font);
+        }
+
+        /* セクションの共通の白背景パネル(オレンジ→緑のグラデーション境界線) */
+        .panel-wrap {
+            background: linear-gradient(90deg, var(--orange), var(--teal));
+            border-radius: 18px;
+            padding: 3px;
+        }
+
+        .panel {
+            background: var(--card-bg);
+            border-radius: 15px;
+            padding: 20px;
         }
 
         .grid {
-            max-width: 1000px;
-            margin: 0 auto;
             list-style: none;
             padding: 0;
+            margin: 0;
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-            gap: 14px;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 16px;
         }
 
         .card {
             display: block;
-            background: var(--card-bg);
-            border-radius: 14px;
-            padding: 14px;
             text-decoration: none;
             color: var(--text);
-            border: 1px solid #2f2f45;
-            transition: transform 0.15s ease, border-color 0.15s ease;
         }
 
-        .card:hover {
-            transform: translateY(-3px);
-            border-color: var(--purple);
+        /* 配信中カード */
+        .live-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
         }
 
-        .card img {
+        .live-card img.icon {
             width: 56px;
             height: 56px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid var(--orange);
+            border: 3px solid var(--red);
             display: block;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
 
-        .card .name {
+        .live-card .name {
             font-weight: 700;
-            font-size: 0.95rem;
-            display: block;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            font-size: 0.9rem;
         }
 
         .live-badge {
             display: inline-block;
             margin-top: 6px;
-            padding: 3px 8px;
+            padding: 3px 10px;
             border-radius: 999px;
-            background: var(--orange);
+            background: var(--red);
             color: #fff;
-            font-size: 0.75rem;
+            font-size: 0.72rem;
             font-weight: 700;
         }
 
@@ -116,64 +137,130 @@
             margin-right: 5px;
         }
 
-        .empty {
-            max-width: 1000px;
-            margin: 0 auto;
+        /* 新着動画/ショートカード: サムネ+タイトル+チャンネル情報 */
+        .video-card {
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #ececE4;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .video-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+
+        .video-card .thumb {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            object-fit: cover;
+            display: block;
+            background: #eee;
+        }
+
+        .video-card .video-title {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            padding: 10px 10px 6px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            line-height: 1.4;
+            min-height: 2.4em;
+        }
+
+        .video-card .channel-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0 10px 10px;
+            font-size: 0.75rem;
             color: var(--text-dim);
-            font-size: 0.9rem;
+        }
+
+        .video-card .channel-row img {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--light-green);
         }
     </style>
 </head>
 <body>
     <header>
-        <h1>spltube</h1>
+        <h1>splive!</h1>
     </header>
 
-    <h2>配信中</h2>
-    <ul class="grid">
-        {% for status in statuses %}
-            {% if status.is_live %}
-            <li>
-                {% if status.which_channel.platform == "twitch" %}
-                <a class="card" href="https://twitch.tv/{{ status.which_channel.channel_id }}" target="_blank">
-                {% else %}
-                <a class="card" href="https://www.youtube.com/channel/{{ status.which_channel.channel_id }}/live" target="_blank">
-                {% endif %}
-                    <img src="{{ status.which_channel.channel_icon }}" alt="">
-                    <span class="name">{{ status.which_channel.channel_name }}</span>
-                    <span class="live-badge">LIVE {{ status.viewer_count }}人</span>
-                </a>
-            </li>
-            {% endif %}
-        {% endfor %}
-    </ul>
+    <div class="layout">
+        <h2>配信中</h2>
+        <div class="panel-wrap">
+            <div class="panel">
+                <ul class="grid">
+                    {% for status in statuses %}
+                        {% if status.is_live %}
+                        <li>
+                            {% if status.which_channel.platform == "twitch" %}
+                            <a class="card live-card" href="https://twitch.tv/{{ status.which_channel.channel_id }}" target="_blank">
+                            {% else %}
+                            <a class="card live-card" href="https://www.youtube.com/channel/{{ status.which_channel.channel_id }}/live" target="_blank">
+                            {% endif %}
+                                <img class="icon" src="{{ status.which_channel.channel_icon }}" alt="">
+                                <span class="name">{{ status.which_channel.channel_name }}</span>
+                                <span class="live-badge">LIVE {{ status.viewer_count }}人</span>
+                            </a>
+                        </li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
 
-    <h2>新着動画</h2>
-    <ul class="grid">
-        {% for status in statuses %}
-            {% if status.new_video_exist %}
-            <li>
-                <a class="card" href="https://www.youtube.com/watch?v={{ status.latest_video_id }}" target="_blank">
-                    <img src="{{ status.which_channel.channel_icon }}" alt="">
-                    <span class="name">{{ status.which_channel.channel_name }}</span>
-                </a>
-            </li>
-            {% endif %}
-        {% endfor %}
-    </ul>
+        <h2>新着動画</h2>
+        <div class="panel-wrap">
+            <div class="panel">
+                <ul class="grid">
+                    {% for status in statuses %}
+                        {% if status.new_video_exist %}
+                        <li>
+                            <a class="card video-card" href="https://www.youtube.com/watch?v={{ status.latest_video_id }}" target="_blank">
+                                <img class="thumb" src="{{ status.latest_video_thumbnail }}" alt="">
+                                <span class="video-title">{{ status.latest_video_title }}</span>
+                                <span class="channel-row">
+                                    <img src="{{ status.which_channel.channel_icon }}" alt="">
+                                    {{ status.which_channel.channel_name }}
+                                </span>
+                            </a>
+                        </li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
 
-    <h2>新着ショート</h2>
-    <ul class="grid">
-        {% for status in statuses %}
-            {% if status.new_short_exist %}
-            <li>
-                <a class="card" href="https://www.youtube.com/shorts/{{ status.latest_short_id }}" target="_blank">
-                    <img src="{{ status.which_channel.channel_icon }}" alt="">
-                    <span class="name">{{ status.which_channel.channel_name }}</span>
-                </a>
-            </li>
-            {% endif %}
-        {% endfor %}
-    </ul>
+        <h2>新着ショート</h2>
+        <div class="panel-wrap">
+            <div class="panel">
+                <ul class="grid">
+                    {% for status in statuses %}
+                        {% if status.new_short_exist %}
+                        <li>
+                            <a class="card video-card" href="https://www.youtube.com/shorts/{{ status.latest_short_id }}" target="_blank">
+                                <img class="thumb" src="{{ status.latest_short_thumbnail }}" alt="">
+                                <span class="video-title">{{ status.latest_short_title }}</span>
+                                <span class="channel-row">
+                                    <img src="{{ status.which_channel.channel_icon }}" alt="">
+                                    {{ status.which_channel.channel_name }}
+                                </span>
+                            </a>
+                        </li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
