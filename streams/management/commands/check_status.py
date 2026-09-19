@@ -21,6 +21,9 @@ def get_twitch_access_token(client_id, client_secret):
     return resp.json()["access_token"]
 
 
+EMPTY_LIVE = {"is_live": False, "viewer_count": 0, "title": "", "thumbnail": ""}
+
+
 def get_twitch_stream(username, client_id, access_token):
     resp = requests.get(
         "https://api.twitch.tv/helix/streams",
@@ -32,8 +35,16 @@ def get_twitch_stream(username, client_id, access_token):
     )
     data = resp.json().get("data", [])
     if not data:
-        return False, 0
-    return True, data[0].get("viewer_count", 0)
+        return EMPTY_LIVE
+
+    stream = data[0]
+    thumbnail = stream.get("thumbnail_url", "").replace("{width}", "440").replace("{height}", "248")
+    return {
+        "is_live": True,
+        "viewer_count": stream.get("viewer_count", 0),
+        "title": stream.get("title", ""),
+        "thumbnail": thumbnail,
+    }
 
 
 def check_youtube_live(channel_id):
@@ -48,15 +59,18 @@ def check_youtube_live(channel_id):
     return is_live, video_id
 
 
-def get_youtube_concurrent_viewers(youtube, video_id):
+def get_youtube_live_details(youtube, video_id):
     try:
         resp = youtube.videos().list(
-            part="liveStreamingDetails", id=video_id
+            part="snippet,liveStreamingDetails", id=video_id
         ).execute()
-        details = resp["items"][0]["liveStreamingDetails"]
-        return int(details.get("concurrentViewers", 0))
+        item = resp["items"][0]
+        viewer_count = int(item["liveStreamingDetails"].get("concurrentViewers", 0))
+        title = item["snippet"]["title"]
+        thumbnail = item["snippet"]["thumbnails"]["high"]["url"]
+        return {"is_live": True, "viewer_count": viewer_count, "title": title, "thumbnail": thumbnail}
     except Exception:
-        return 0
+        return EMPTY_LIVE
 
 
 ATOM_NS = "{http://www.w3.org/2005/Atom}"
@@ -110,9 +124,7 @@ class Command(BaseCommand):
 
         for channel in RegisteredChannel.objects.all():
             if channel.platform == "twitch":
-                is_live, viewer_count = get_twitch_stream(
-                    channel.channel_id, twitch_client_id, twitch_token
-                )
+                live = get_twitch_stream(channel.channel_id, twitch_client_id, twitch_token)
                 video = EMPTY_UPLOAD
                 short = EMPTY_UPLOAD
             else:
@@ -124,15 +136,15 @@ class Command(BaseCommand):
 
                 is_live, video_id = check_youtube_live(channel.channel_id)
                 if is_live and video_id:
-                    viewer_count = get_youtube_concurrent_viewers(youtube, video_id)
+                    live = get_youtube_live_details(youtube, video_id)
                 else:
-                    viewer_count = 0
+                    live = EMPTY_LIVE
 
             # DB
             ChannelStatus.objects.update_or_create(
                 which_channel=channel,
                 defaults={
-                    "is_live": is_live,
+                    "is_live": live["is_live"],
                     "new_video_exist": video["is_recent"],
                     "new_short_exist": short["is_recent"],
                     "latest_video_id": video["video_id"],
@@ -141,11 +153,13 @@ class Command(BaseCommand):
                     "latest_short_id": short["video_id"],
                     "latest_short_title": short["title"],
                     "latest_short_thumbnail": short["thumbnail"],
-                    "viewer_count": viewer_count,
+                    "live_title": live["title"],
+                    "live_thumbnail": live["thumbnail"],
+                    "viewer_count": live["viewer_count"],
                 },
             )
 
             self.stdout.write(
-                f"{channel.channel_name} ({channel.platform}): live={is_live}, "
-                f"video={video['is_recent']}, short={short['is_recent']}, viewers={viewer_count}"
+                f"{channel.channel_name} ({channel.platform}): live={live['is_live']}, "
+                f"video={video['is_recent']}, short={short['is_recent']}, viewers={live['viewer_count']}"
             )

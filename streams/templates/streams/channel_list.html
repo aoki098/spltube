@@ -93,74 +93,59 @@
             color: var(--text);
         }
 
-        /* 配信中カード */
-        .live-card {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-        }
-
-        .live-card img.icon {
-            width: 56px;
-            height: 56px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 3px solid var(--red);
+        /* カード共通(配信中・新着動画・新着ショートで共有) */
+        .media-card {
             display: block;
-            margin-bottom: 8px;
-        }
-
-        .live-card .name {
-            font-weight: 700;
-            font-size: 0.9rem;
-        }
-
-        .live-badge {
-            display: inline-block;
-            margin-top: 6px;
-            padding: 3px 10px;
-            border-radius: 999px;
-            background: var(--red);
-            color: #fff;
-            font-size: 0.72rem;
-            font-weight: 700;
-        }
-
-        .live-badge::before {
-            content: "";
-            display: inline-block;
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: #fff;
-            margin-right: 5px;
-        }
-
-        /* 新着動画/ショートカード: サムネ+タイトル+チャンネル情報 */
-        .video-card {
             border-radius: 12px;
             overflow: hidden;
             border: 1px solid #ececE4;
             transition: transform 0.15s ease, box-shadow 0.15s ease;
         }
 
-        .video-card:hover {
+        .media-card:hover {
             transform: translateY(-3px);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
         }
 
-        .video-card .card-icon {
+        .media-card .card-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+        }
+
+        .media-card .card-icon {
             width: 44px;
             height: 44px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid var(--light-green);
             display: block;
-            margin: 10px 0 8px 10px;
+            flex-shrink: 0;
         }
 
-        .video-card .thumb {
+        /* 配信中は赤、新着系は薄緑でアイコンをくくる */
+        .live-card .card-icon {
+            border: 5px solid var(--red);
+        }
+
+        .video-card .card-icon {
+            border: 3px solid var(--light-green);
+        }
+
+        .media-card .channel-name {
+            font-weight: 700;
+            font-size: 0.75rem;
+            color: var(--text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .media-card .thumb-wrap {
+            position: relative;
+        }
+
+        .media-card .thumb {
             width: 100%;
             aspect-ratio: 16 / 9;
             object-fit: cover;
@@ -168,24 +153,29 @@
             background: #eee;
         }
 
-        .video-card .video-title {
+        .viewer-badge {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            background: var(--red);
+            color: #fff;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 999px;
+        }
+
+        .media-card .video-title {
             display: -webkit-box;
             -webkit-line-clamp: 2;
             line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
-            padding: 10px 10px 4px;
+            padding: 8px 10px;
             font-size: 0.85rem;
             font-weight: 700;
             line-height: 1.4;
             min-height: 2.4em;
-        }
-
-        .video-card .by-line {
-            display: block;
-            padding: 0 10px 10px;
-            font-size: 0.75rem;
-            color: var(--text-dim);
         }
 
         footer {
@@ -216,13 +206,19 @@
                         {% if status.is_live %}
                         <li>
                             {% if status.which_channel.platform == "twitch" %}
-                            <a class="card live-card" href="https://twitch.tv/{{ status.which_channel.channel_id }}" target="_blank">
+                            <a class="card media-card live-card" href="https://twitch.tv/{{ status.which_channel.channel_id }}" target="_blank">
                             {% else %}
-                            <a class="card live-card" href="https://www.youtube.com/channel/{{ status.which_channel.channel_id }}/live" target="_blank">
+                            <a class="card media-card live-card" href="https://www.youtube.com/channel/{{ status.which_channel.channel_id }}/live" target="_blank">
                             {% endif %}
-                                <img class="icon" src="{{ status.which_channel.channel_icon }}" alt="">
-                                <span class="name">{{ status.which_channel.channel_name }}</span>
-                                <span class="live-badge">LIVE {{ status.viewer_count }}人</span>
+                                <span class="card-header">
+                                    <img class="card-icon" src="{{ status.which_channel.channel_icon }}" alt="">
+                                    <span class="channel-name">{{ status.which_channel.channel_name }}</span>
+                                </span>
+                                <span class="thumb-wrap">
+                                    <img class="thumb" src="{{ status.live_thumbnail }}" alt="">
+                                    <span class="viewer-badge">{{ status.viewer_count }}人</span>
+                                </span>
+                                <span class="video-title">{{ status.live_title }}</span>
                             </a>
                         </li>
                         {% endif %}
@@ -238,11 +234,13 @@
                     {% for status in statuses %}
                         {% if status.new_video_exist %}
                         <li>
-                            <a class="card video-card" href="https://www.youtube.com/watch?v={{ status.latest_video_id }}" target="_blank">
-                                <img class="card-icon" src="{{ status.which_channel.channel_icon }}" alt="">
+                            <a class="card media-card video-card" href="https://www.youtube.com/watch?v={{ status.latest_video_id }}" target="_blank">
+                                <span class="card-header">
+                                    <img class="card-icon" src="{{ status.which_channel.channel_icon }}" alt="">
+                                    <span class="channel-name">{{ status.which_channel.channel_name }}</span>
+                                </span>
                                 <img class="thumb" src="{{ status.latest_video_thumbnail }}" alt="">
                                 <span class="video-title">{{ status.latest_video_title }}</span>
-                                <span class="by-line">by {{ status.which_channel.channel_name }}</span>
                             </a>
                         </li>
                         {% endif %}
@@ -258,11 +256,13 @@
                     {% for status in statuses %}
                         {% if status.new_short_exist %}
                         <li>
-                            <a class="card video-card" href="https://www.youtube.com/shorts/{{ status.latest_short_id }}" target="_blank">
-                                <img class="card-icon" src="{{ status.which_channel.channel_icon }}" alt="">
+                            <a class="card media-card video-card" href="https://www.youtube.com/shorts/{{ status.latest_short_id }}" target="_blank">
+                                <span class="card-header">
+                                    <img class="card-icon" src="{{ status.which_channel.channel_icon }}" alt="">
+                                    <span class="channel-name">{{ status.which_channel.channel_name }}</span>
+                                </span>
                                 <img class="thumb" src="{{ status.latest_short_thumbnail }}" alt="">
                                 <span class="video-title">{{ status.latest_short_title }}</span>
-                                <span class="by-line">by {{ status.which_channel.channel_name }}</span>
                             </a>
                         </li>
                         {% endif %}
