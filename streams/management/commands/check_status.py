@@ -119,6 +119,19 @@ def get_youtube_view_count(youtube, video_id):
     except Exception:
         return 0
 
+
+def compute_view_velocity(youtube, upload, previous_video_id, previous_view_count):
+    # 動画/ショート共通: 再生数と、前回チェックからの伸びを計算する
+    if not upload["is_recent"]:
+        return 0, 0
+
+    view_count = get_youtube_view_count(youtube, upload["video_id"])
+    if previous_video_id == upload["video_id"]:
+        view_velocity = view_count - previous_view_count
+    else:
+        view_velocity = 0
+    return view_count, view_velocity
+
 #配信中か新着道があるかをDBに記録する
 class Command(BaseCommand):
     def handle(self, *args, **options):
@@ -139,6 +152,8 @@ class Command(BaseCommand):
                 short = EMPTY_UPLOAD
                 view_count = 0
                 view_velocity = 0
+                short_view_count = 0
+                short_view_velocity = 0
             else:
                 video_playlist_id = channel.channel_id.replace("UC", "UULF", 1)
                 short_playlist_id = channel.channel_id.replace("UC", "UUSH", 1)
@@ -146,15 +161,17 @@ class Command(BaseCommand):
                 video = has_recent_upload(video_playlist_id)
                 short = has_recent_upload(short_playlist_id)
 
-                if video["is_recent"]:
-                    view_count = get_youtube_view_count(youtube, video["video_id"])
-                    if previous_status and previous_status.latest_video_id == video["video_id"]:
-                        view_velocity = view_count - previous_status.latest_video_view_count
-                    else:
-                        view_velocity = 0
-                else:
-                    view_count = 0
-                    view_velocity = 0
+                prev_video_id = previous_status.latest_video_id if previous_status else ""
+                prev_video_views = previous_status.latest_video_view_count if previous_status else 0
+                view_count, view_velocity = compute_view_velocity(
+                    youtube, video, prev_video_id, prev_video_views
+                )
+
+                prev_short_id = previous_status.latest_short_id if previous_status else ""
+                prev_short_views = previous_status.latest_short_view_count if previous_status else 0
+                short_view_count, short_view_velocity = compute_view_velocity(
+                    youtube, short, prev_short_id, prev_short_views
+                )
 
                 is_live, video_id = check_youtube_live(channel.channel_id)
                 if is_live and video_id:
@@ -177,6 +194,8 @@ class Command(BaseCommand):
                     "latest_short_id": short["video_id"],
                     "latest_short_title": short["title"],
                     "latest_short_thumbnail": short["thumbnail"],
+                    "latest_short_view_count": short_view_count,
+                    "latest_short_view_velocity": short_view_velocity,
                     "live_title": live["title"],
                     "live_thumbnail": live["thumbnail"],
                     "viewer_count": live["viewer_count"],
