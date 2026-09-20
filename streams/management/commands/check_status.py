@@ -111,6 +111,14 @@ def has_recent_upload(playlist_id):
 
     return {"is_recent": True, "video_id": video_id, "title": title, "thumbnail": thumbnail}
 
+
+def get_youtube_view_count(youtube, video_id):
+    try:
+        resp = youtube.videos().list(part="statistics", id=video_id).execute()
+        return int(resp["items"][0]["statistics"]["viewCount"])
+    except Exception:
+        return 0
+
 #配信中か新着道があるかをDBに記録する
 class Command(BaseCommand):
     def handle(self, *args, **options):
@@ -123,16 +131,30 @@ class Command(BaseCommand):
         twitch_token = get_twitch_access_token(twitch_client_id, twitch_client_secret)
 
         for channel in RegisteredChannel.objects.all():
+            previous_status = ChannelStatus.objects.filter(which_channel=channel).first()
+
             if channel.platform == "twitch":
                 live = get_twitch_stream(channel.channel_id, twitch_client_id, twitch_token)
                 video = EMPTY_UPLOAD
                 short = EMPTY_UPLOAD
+                view_count = 0
+                view_velocity = 0
             else:
                 video_playlist_id = channel.channel_id.replace("UC", "UULF", 1)
                 short_playlist_id = channel.channel_id.replace("UC", "UUSH", 1)
 
                 video = has_recent_upload(video_playlist_id)
                 short = has_recent_upload(short_playlist_id)
+
+                if video["is_recent"]:
+                    view_count = get_youtube_view_count(youtube, video["video_id"])
+                    if previous_status and previous_status.latest_video_id == video["video_id"]:
+                        view_velocity = view_count - previous_status.latest_video_view_count
+                    else:
+                        view_velocity = 0
+                else:
+                    view_count = 0
+                    view_velocity = 0
 
                 is_live, video_id = check_youtube_live(channel.channel_id)
                 if is_live and video_id:
@@ -150,6 +172,8 @@ class Command(BaseCommand):
                     "latest_video_id": video["video_id"],
                     "latest_video_title": video["title"],
                     "latest_video_thumbnail": video["thumbnail"],
+                    "latest_video_view_count": view_count,
+                    "latest_video_view_velocity": view_velocity,
                     "latest_short_id": short["video_id"],
                     "latest_short_title": short["title"],
                     "latest_short_thumbnail": short["thumbnail"],

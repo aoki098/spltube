@@ -16,6 +16,8 @@ class ChannelStatus(models.Model):
     latest_video_id = models.CharField(max_length=11, blank=True, default="")
     latest_video_title = models.CharField(max_length=200, blank=True, default="")
     latest_video_thumbnail = models.URLField(blank=True, default="")
+    latest_video_view_count = models.IntegerField(default=0)
+    latest_video_view_velocity = models.IntegerField(default=0)
     latest_short_id = models.CharField(max_length=11, blank=True, default="")
     latest_short_title = models.CharField(max_length=200, blank=True, default="")
     latest_short_thumbnail = models.URLField(blank=True, default="")

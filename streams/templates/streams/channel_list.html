@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>spltube</title>
+    <title>splive</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Mochiy+Pop+One&display=swap" rel="stylesheet">
@@ -57,8 +57,12 @@
             padding: 0 16px 60px;
         }
 
+        .layout h2:first-of-type {
+            margin-top: 12px;
+        }
+
         h2 {
-            margin: 40px 0 16px;
+            margin: 24px 0 16px;
             padding-left: 12px;
             border-left: 6px solid var(--teal);
             font-size: 1.2rem;
@@ -194,7 +198,7 @@
 </head>
 <body>
     <header>
-        <h1>splive!</h1>
+        <h1>splive</h1>
     </header>
 
     <div class="layout">
@@ -202,8 +206,7 @@
         <div class="panel-wrap">
             <div class="panel">
                 <ul class="grid">
-                    {% for status in statuses %}
-                        {% if status.is_live %}
+                    {% for status in live %}
                         <li>
                             {% if status.which_channel.platform == "twitch" %}
                             <a class="card media-card live-card" href="https://twitch.tv/{{ status.which_channel.channel_id }}" target="_blank">
@@ -221,7 +224,6 @@
                                 <span class="video-title">{{ status.live_title }}</span>
                             </a>
                         </li>
-                        {% endif %}
                     {% endfor %}
                 </ul>
             </div>
@@ -231,8 +233,7 @@
         <div class="panel-wrap">
             <div class="panel">
                 <ul class="grid">
-                    {% for status in statuses %}
-                        {% if status.new_video_exist %}
+                    {% for status in videos %}
                         <li>
                             <a class="card media-card video-card" href="https://www.youtube.com/watch?v={{ status.latest_video_id }}" target="_blank">
                                 <span class="card-header">
@@ -243,7 +244,6 @@
                                 <span class="video-title">{{ status.latest_video_title }}</span>
                             </a>
                         </li>
-                        {% endif %}
                     {% endfor %}
                 </ul>
             </div>
@@ -253,8 +253,7 @@
         <div class="panel-wrap">
             <div class="panel">
                 <ul class="grid">
-                    {% for status in statuses %}
-                        {% if status.new_short_exist %}
+                    {% for status in shorts %}
                         <li>
                             <a class="card media-card video-card" href="https://www.youtube.com/shorts/{{ status.latest_short_id }}" target="_blank">
                                 <span class="card-header">
@@ -265,7 +264,6 @@
                                 <span class="video-title">{{ status.latest_short_title }}</span>
                             </a>
                         </li>
-                        {% endif %}
                     {% endfor %}
                 </ul>
             </div>
