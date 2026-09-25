@@ -1,8 +1,15 @@
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
+import httplib2
+from googleapiclient.errors import HttpError
 from django.test import TestCase
 from .models import RegisteredChannel, ChannelStatus
-from .management.commands.check_status import has_recent_upload
+from .management.commands.check_status import (
+    fetch_video_details,
+    get_youtube_live_details,
+    get_youtube_view_count,
+    has_recent_upload,
+)
 
 
 class RegisteredChannelTests(TestCase):
@@ -157,3 +164,94 @@ class HasRecentUploadTests(TestCase):
         result = has_recent_upload(youtube, "UULFxxxxxxxxxxxxxxxxxxxxxx")
 
         self.assertIsNone(result)
+
+    def test_404は新着なしとして扱う(self):
+        # ショートを投稿していないチャンネルはUUSH再生リストが存在せず404になる
+        # これは取得失敗ではないので、Noneではなく「新着なし」を返す
+        youtube = MagicMock()
+        エラー = HttpError(httplib2.Response({"status": 404}), b"not found")
+        youtube.playlistItems().list().execute.side_effect = エラー
+
+        result = has_recent_upload(youtube, "UUSHxxxxxxxxxxxxxxxxxxxxxx")
+
+        self.assertIsNotNone(result)
+        self.assertFalse(result["is_recent"])
+
+
+class FetchVideoDetailsTests(TestCase):
+    # fetch_video_detailsは動画IDをまとめてAPIに渡すことでクォータを節約する
+    # 「何回API呼び出しが発生したか」がそのまま消費量なので、回数をテストする
+
+    def _fake_youtube(self, items):
+        youtube = MagicMock()
+        youtube.videos.return_value.list.return_value.execute.return_value = {"items": items}
+        return youtube
+
+    def _呼び出し回数(self, youtube):
+        return youtube.videos.return_value.list.call_count
+
+    def test_50件までは1回のAPI呼び出しで済む(self):
+        video_ids = [f"video{i:06d}" for i in range(50)]
+        youtube = self._fake_youtube([])
+
+        fetch_video_details(youtube, video_ids)
+
+        self.assertEqual(self._呼び出し回数(youtube), 1)
+
+    def test_51件だと2回に分かれる(self):
+        # videos.listは1回50件までなので、超えたら分割される
+        video_ids = [f"video{i:06d}" for i in range(51)]
+        youtube = self._fake_youtube([])
+
+        fetch_video_details(youtube, video_ids)
+
+        self.assertEqual(self._呼び出し回数(youtube), 2)
+
+    def test_同じ動画IDは重複して数えない(self):
+        youtube = self._fake_youtube([])
+
+        fetch_video_details(youtube, ["abcdefghijk"] * 60)
+
+        self.assertEqual(self._呼び出し回数(youtube), 1)
+
+    def test_動画IDをキーにした辞書が返る(self):
+        youtube = self._fake_youtube([
+            {"id": "abcdefghijk", "statistics": {"viewCount": "1234"}},
+        ])
+
+        details = fetch_video_details(youtube, ["abcdefghijk"])
+
+        self.assertEqual(get_youtube_view_count(details, "abcdefghijk"), 1234)
+
+    def test_API呼び出しが失敗しても落ちない(self):
+        youtube = MagicMock()
+        youtube.videos.return_value.list.return_value.execute.side_effect = Exception("API error")
+
+        details = fetch_video_details(youtube, ["abcdefghijk"])
+
+        self.assertEqual(details, {})
+
+    def test_取得できなかった動画は再生数0になる(self):
+        self.assertEqual(get_youtube_view_count({}, "abcdefghijk"), 0)
+
+    def test_配信詳細が取得できなかったらNoneを返す(self):
+        # 「配信していない」ではなく「取得失敗」なので、前回の値を残すためNoneを返す
+        self.assertIsNone(get_youtube_live_details({}, "abcdefghijk"))
+
+    def test_配信詳細から同時接続者数を取り出せる(self):
+        details = {
+            "abcdefghijk": {
+                "snippet": {
+                    "title": "テスト配信タイトル",
+                    "thumbnails": {"high": {"url": "https://example.com/live.jpg"}},
+                },
+                "liveStreamingDetails": {"concurrentViewers": "567"},
+            }
+        }
+
+        live = get_youtube_live_details(details, "abcdefghijk")
+
+        self.assertTrue(live["is_live"])
+        self.assertEqual(live["viewer_count"], 567)
+        self.assertEqual(live["title"], "テスト配信タイトル")
+        self.assertEqual(live["thumbnail"], "https://example.com/live.jpg")

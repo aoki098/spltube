@@ -59,18 +59,46 @@ def check_youtube_live(channel_id):
     return is_live, video_id
 
 
-def get_youtube_live_details(youtube, video_id):
-    try:
-        resp = youtube.videos().list(
-            part="snippet,liveStreamingDetails", id=video_id
-        ).execute()
-        item = resp["items"][0]
-        viewer_count = int(item["liveStreamingDetails"].get("concurrentViewers", 0))
-        title = item["snippet"]["title"]
-        thumbnail = item["snippet"]["thumbnails"]["high"]["url"]
-        return {"is_live": True, "viewer_count": viewer_count, "title": title, "thumbnail": thumbnail}
-    except Exception:
-        return EMPTY_LIVE
+def fetch_video_details(youtube, video_ids):
+    # 複数の動画情報を1回のAPI呼び出しでまとめて取得する
+    # videos.listはIDをカンマ区切りで最大50件まで渡せて、それでも消費は1クォータで済む
+    # (1本ずつ呼ぶとチャンネル数に比例して消費が増えてしまうため)
+    details = {}
+    unique_ids = list(dict.fromkeys(video_ids))  # 重複を除く(順番は保たれる)
+
+    for start in range(0, len(unique_ids), 50):
+        chunk = unique_ids[start:start + 50]
+        try:
+            resp = youtube.videos().list(
+                part="snippet,statistics,liveStreamingDetails",
+                id=",".join(chunk),
+                maxResults=50,
+            ).execute()
+        except Exception as e:
+            print(f"videos.list failed: {str(e)[:120]}")
+            continue
+
+        for item in resp.get("items", []):
+            details[item["id"]] = item
+
+    return details
+
+
+def get_youtube_live_details(details, video_id):
+    # まとめ取得した結果から配信情報を取り出す(ここではAPIを呼ばない)
+    item = details.get(video_id)
+    if item is None:
+        # 取得失敗(前回の値を維持するため、Noneを返してEMPTY_LIVEと区別する)
+        return None
+
+    snippet = item.get("snippet", {})
+    thumbnails = snippet.get("thumbnails", {})
+    return {
+        "is_live": True,
+        "viewer_count": int(item.get("liveStreamingDetails", {}).get("concurrentViewers", 0)),
+        "title": snippet.get("title", ""),
+        "thumbnail": thumbnails.get("high", thumbnails.get("default", {})).get("url", ""),
+    }
 
 
 EMPTY_UPLOAD = {"is_recent": False, "video_id": "", "title": "", "thumbnail": ""}
@@ -84,7 +112,12 @@ def has_recent_upload(youtube, playlist_id):
             part="snippet", playlistId=playlist_id, maxResults=1
         ).execute()
     except Exception as e:
-        # 取得失敗(前回の値を維持するため、Noneを返して「新着なし」と区別する)
+        # 404は再生リスト自体が存在しない場合(ショートを一度も投稿していないチャンネルなど)
+        # これは取得失敗ではなく「新着なし」が正解なのでEMPTY_UPLOADを返す
+        if getattr(getattr(e, "resp", None), "status", None) == 404:
+            return EMPTY_UPLOAD
+
+        # それ以外は取得失敗(前回の値を維持するため、Noneを返して「新着なし」と区別する)
         print(f"playlistItems failed for {playlist_id}: {str(e)[:120]}")
         return None
 
@@ -113,21 +146,21 @@ def has_recent_upload(youtube, playlist_id):
     }
 
 
-def get_youtube_view_count(youtube, video_id):
-    try:
-        resp = youtube.videos().list(part="statistics", id=video_id).execute()
-        return int(resp["items"][0]["statistics"]["viewCount"])
-    except Exception:
+def get_youtube_view_count(details, video_id):
+    # まとめ取得した結果から再生数を取り出す(ここではAPIを呼ばない)
+    item = details.get(video_id)
+    if item is None:
         return 0
+    return int(item.get("statistics", {}).get("viewCount", 0))
 
 
-def compute_view_velocity(youtube, upload, previous_video_id, previous_view_count):
+def compute_view_velocity(details, upload, previous_video_id, previous_view_count):
     # 動画/ショート共通: 再生数と、前回チェックからの伸びを計算する
     # uploadがNone(取得失敗)の場合も計算できないので0を返す
     if upload is None or not upload["is_recent"]:
         return 0, 0
 
-    view_count = get_youtube_view_count(youtube, upload["video_id"])
+    view_count = get_youtube_view_count(details, upload["video_id"])
     if previous_video_id == upload["video_id"]:
         view_velocity = view_count - previous_view_count
     else:
@@ -200,6 +233,19 @@ class Command(BaseCommand):
         # 新着動画チェックはfullモードの時だけ行う
         uploads = fetch_uploads(youtube, channels) if mode == "full" else {}
 
+        # 詳細を知りたい動画IDを先に全部集める(配信中の動画 + 新着動画 + 新着ショート)
+        video_ids = []
+        for result in results:
+            if result["live_video_id"]:
+                video_ids.append(result["live_video_id"])
+        for video, short in uploads.values():
+            for upload in (video, short):
+                if upload is not None and upload["is_recent"]:
+                    video_ids.append(upload["video_id"])
+
+        # 50件ずつまとめて取得する(チャンネルが増えてもクォータ消費がほとんど増えない)
+        details = fetch_video_details(youtube, video_ids)
+
         for result in results:
             channel = result["channel"]
             video, short = uploads.get(channel.id, (None, None))
@@ -215,27 +261,32 @@ class Command(BaseCommand):
                 prev_video_id = previous_status.latest_video_id if previous_status else ""
                 prev_video_views = previous_status.latest_video_view_count if previous_status else 0
                 view_count, view_velocity = compute_view_velocity(
-                    youtube, video, prev_video_id, prev_video_views
+                    details, video, prev_video_id, prev_video_views
                 )
 
                 prev_short_id = previous_status.latest_short_id if previous_status else ""
                 prev_short_views = previous_status.latest_short_view_count if previous_status else 0
                 short_view_count, short_view_velocity = compute_view_velocity(
-                    youtube, short, prev_short_id, prev_short_views
+                    details, short, prev_short_id, prev_short_views
                 )
 
                 if result["live_video_id"]:
-                    live = get_youtube_live_details(youtube, result["live_video_id"])
+                    live = get_youtube_live_details(details, result["live_video_id"])
                 else:
                     live = EMPTY_LIVE
 
-            # 配信中の情報は毎回更新する
-            defaults = {
-                "is_live": live["is_live"],
-                "live_title": live["title"],
-                "live_thumbnail": live["thumbnail"],
-                "viewer_count": live["viewer_count"],
-            }
+            if live is not None:
+                # 配信中の情報は毎回更新する
+                defaults = {
+                    "is_live": live["is_live"],
+                    "live_title": live["title"],
+                    "live_thumbnail": live["thumbnail"],
+                    "viewer_count": live["viewer_count"],
+                }
+            else:
+                # 配信中だとスクレイピングでは分かったが、詳細を取得できなかった場合
+                # (前回のタイトル・サムネイルを残すため、is_liveだけ更新する)
+                defaults = {"is_live": True}
 
             # 動画・ショートは「取得できた時だけ」更新する
             # (取得失敗(None)の時に上書きすると、前回の正しい情報が消えてしまうため)
@@ -272,7 +323,10 @@ class Command(BaseCommand):
                 short_result = "取得失敗" if short is None else short["is_recent"]
                 upload_result = f"video={video_result}, short={short_result}"
 
+            live_result = "True(詳細取得失敗)" if live is None else live["is_live"]
+            viewers = 0 if live is None else live["viewer_count"]
+
             self.stdout.write(
                 f"{channel.channel_name} ({channel.platform}): "
-                f"live={live['is_live']}, {upload_result}, viewers={live['viewer_count']}"
+                f"live={live_result}, {upload_result}, viewers={viewers}"
             )
