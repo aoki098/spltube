@@ -149,38 +149,54 @@ def compute_view_velocity(youtube, upload, previous_video_id, previous_view_coun
         view_velocity = 0
     return view_count, view_velocity
 
-def fetch_channel_data(channel, twitch_client_id, twitch_token):
-    # ネットワークからの取得だけを行う(DBには触らない)
+def fetch_live_data(channel, twitch_client_id, twitch_token):
+    # 配信中かどうかだけを取得する(DBには触らない)
     # この関数が複数チャンネル分、並列で実行される
     if channel.platform == "twitch":
-        live = get_twitch_stream(channel.channel_id, twitch_client_id, twitch_token)
         return {
             "channel": channel,
-            "video": EMPTY_UPLOAD,
-            "short": EMPTY_UPLOAD,
-            "live": live,
+            "live": get_twitch_stream(channel.channel_id, twitch_client_id, twitch_token),
             "live_video_id": None,
         }
 
-    video_playlist_id = channel.channel_id.replace("UC", "UULF", 1)
-    short_playlist_id = channel.channel_id.replace("UC", "UUSH", 1)
-
-    video = has_recent_upload(video_playlist_id)
-    short = has_recent_upload(short_playlist_id)
     is_live, live_video_id = check_youtube_live(channel.channel_id)
-
     return {
         "channel": channel,
-        "video": video,
-        "short": short,
         "live": None,  # YouTube APIを使う部分は後でまとめて処理する
         "live_video_id": live_video_id if is_live else None,
     }
 
 
+def fetch_uploads(channels):
+    # 新着動画・ショートをRSSで取得する
+    # YouTubeのRSSはレート制限が厳しいので、並列にせず間隔を空けて直列に叩く
+    uploads = {}
+    for channel in channels:
+        if channel.platform == "twitch":
+            continue
+
+        video_playlist_id = channel.channel_id.replace("UC", "UULF", 1)
+        short_playlist_id = channel.channel_id.replace("UC", "UUSH", 1)
+
+        video = has_recent_upload(video_playlist_id)
+        time.sleep(1.5)
+        short = has_recent_upload(short_playlist_id)
+        time.sleep(1.5)
+
+        uploads[channel.id] = (video, short)
+    return uploads
+
+
 #配信中か新着道があるかをDBに記録する
 class Command(BaseCommand):
+    def add_arguments(self, parser):
+        # live: 配信中だけをチェック(10分おき用)
+        # full: 配信中+新着動画もチェック(1時間おき用)
+        parser.add_argument("--mode", choices=["live", "full"], default="live")
+
     def handle(self, *args, **options):
+        mode = options["mode"]
+
         load_dotenv()
         api_key = os.environ["YOUTUBE_API_KEY"]
         youtube = build("youtube", "v3", developerKey=api_key)
@@ -191,18 +207,19 @@ class Command(BaseCommand):
 
         channels = list(RegisteredChannel.objects.all())
 
-        # ネットワーク取得だけを並列で実行する(通信待ちの時間を重ねられるので速くなる)
-        # DBとYouTube APIの処理は、この後メインスレッドでまとめて行う
+        # 配信中チェックは並列で実行する(通信待ちの時間を重ねられるので速くなる)
         with ThreadPoolExecutor(max_workers=5) as executor:
             results = list(executor.map(
-                lambda c: fetch_channel_data(c, twitch_client_id, twitch_token),
+                lambda c: fetch_live_data(c, twitch_client_id, twitch_token),
                 channels,
             ))
 
+        # 新着動画チェックはfullモードの時だけ行う
+        uploads = fetch_uploads(channels) if mode == "full" else {}
+
         for result in results:
             channel = result["channel"]
-            video = result["video"]
-            short = result["short"]
+            video, short = uploads.get(channel.id, (None, None))
             previous_status = ChannelStatus.objects.filter(which_channel=channel).first()
 
             if channel.platform == "twitch":
@@ -265,9 +282,14 @@ class Command(BaseCommand):
                 defaults=defaults,
             )
 
-            video_result = "取得失敗" if video is None else video["is_recent"]
-            short_result = "取得失敗" if short is None else short["is_recent"]
+            if mode == "live" or channel.platform == "twitch":
+                upload_result = "(新着チェックなし)"
+            else:
+                video_result = "取得失敗" if video is None else video["is_recent"]
+                short_result = "取得失敗" if short is None else short["is_recent"]
+                upload_result = f"video={video_result}, short={short_result}"
+
             self.stdout.write(
-                f"{channel.channel_name} ({channel.platform}): live={live['is_live']}, "
-                f"video={video_result}, short={short_result}, viewers={live['viewer_count']}"
+                f"{channel.channel_name} ({channel.platform}): "
+                f"live={live['is_live']}, {upload_result}, viewers={live['viewer_count']}"
             )
