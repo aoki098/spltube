@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock
 from django.test import TestCase
 from .models import RegisteredChannel, ChannelStatus
 from .management.commands.check_status import has_recent_upload
@@ -113,50 +113,47 @@ class ChannelListViewTests(TestCase):
 
 
 class HasRecentUploadTests(TestCase):
-    # has_recent_uploadは本物のYouTubeにアクセスするので、
-    # requests.getを偽物(モック)に差し替えてテストする
+    # has_recent_uploadは本物のYouTube APIを呼ぶので、
+    # APIクライアントを偽物(モック)に差し替えてテストする
 
-    def _fake_feed(self, published_at):
-        return f"""<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
-  <entry>
-    <yt:videoId>abcdefghijk</yt:videoId>
-    <title>テスト動画タイトル</title>
-    <published>{published_at}</published>
-    <media:group>
-      <media:thumbnail url="https://example.com/thumb.jpg"/>
-    </media:group>
-  </entry>
-</feed>""".encode("utf-8")
+    def _fake_youtube(self, published_at):
+        youtube = MagicMock()
+        youtube.playlistItems().list().execute.return_value = {
+            "items": [{
+                "snippet": {
+                    "publishedAt": published_at,
+                    "title": "テスト動画タイトル",
+                    "thumbnails": {"high": {"url": "https://example.com/thumb.jpg"}},
+                    "resourceId": {"videoId": "abcdefghijk"},
+                }
+            }]
+        }
+        return youtube
 
-    @patch("streams.management.commands.check_status.requests.get")
-    def test_24時間以内の投稿はis_recentがTrue(self, mock_get):
-        今 = datetime.now(timezone.utc).isoformat()
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.content = self._fake_feed(今)
+    def test_24時間以内の投稿はis_recentがTrue(self):
+        今 = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        youtube = self._fake_youtube(今)
 
-        result = has_recent_upload("UULFxxxxxxxxxxxxxxxxxxxxxx")
+        result = has_recent_upload(youtube, "UULFxxxxxxxxxxxxxxxxxxxxxx")
 
         self.assertTrue(result["is_recent"])
         self.assertEqual(result["video_id"], "abcdefghijk")
         self.assertEqual(result["title"], "テスト動画タイトル")
+        self.assertEqual(result["thumbnail"], "https://example.com/thumb.jpg")
 
-    @patch("streams.management.commands.check_status.requests.get")
-    def test_25時間前の投稿はis_recentがFalse(self, mock_get):
-        昔 = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
-        mock_get.return_value.status_code = 200
-        mock_get.return_value.content = self._fake_feed(昔)
+    def test_25時間前の投稿はis_recentがFalse(self):
+        昔 = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat().replace("+00:00", "Z")
+        youtube = self._fake_youtube(昔)
 
-        result = has_recent_upload("UULFxxxxxxxxxxxxxxxxxxxxxx")
+        result = has_recent_upload(youtube, "UULFxxxxxxxxxxxxxxxxxxxxxx")
 
         self.assertFalse(result["is_recent"])
 
-    @patch("streams.management.commands.check_status.requests.get")
-    def test_取得に失敗したらNoneを返す(self, mock_get):
-        # YouTube側が404や500を返した場合、「新着なし」ではなく「取得失敗(None)」を返す
-        mock_get.return_value.status_code = 404
-        mock_get.return_value.content = b"<html>not found</html>"
+    def test_取得に失敗したらNoneを返す(self):
+        # API呼び出しが例外を投げた場合、「新着なし」ではなく「取得失敗(None)」を返す
+        youtube = MagicMock()
+        youtube.playlistItems().list().execute.side_effect = Exception("API error")
 
-        result = has_recent_upload("UULFxxxxxxxxxxxxxxxxxxxxxx")
+        result = has_recent_upload(youtube, "UULFxxxxxxxxxxxxxxxxxxxxxx")
 
         self.assertIsNone(result)

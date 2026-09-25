@@ -1,8 +1,6 @@
 import os
 import re
-import time
 import requests
-import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
@@ -75,57 +73,44 @@ def get_youtube_live_details(youtube, video_id):
         return EMPTY_LIVE
 
 
-ATOM_NS = "{http://www.w3.org/2005/Atom}"
-YT_NS = "{http://www.youtube.com/xml/schemas/2015}"
-MEDIA_NS = "{http://search.yahoo.com/mrss/}"
-
 EMPTY_UPLOAD = {"is_recent": False, "video_id": "", "title": "", "thumbnail": ""}
 
 
-def fetch_feed(playlist_id, retries=3):
-    # RSSフィードは時々404や500を返すので、数回リトライする
-    # 取得できなければNone(=「取得失敗」)を返す。「新着なし」とは区別する
-    for attempt in range(retries):
-        try:
-            resp = requests.get(
-                "https://www.youtube.com/feeds/videos.xml",
-                params={"playlist_id": playlist_id},
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                return ET.fromstring(resp.content)
-            print(f"feed fetch {playlist_id}: status {resp.status_code} (try {attempt + 1})")
-        except Exception as e:
-            print(f"feed fetch {playlist_id}: {e} (try {attempt + 1})")
-        time.sleep(1)
-    return None
+def has_recent_upload(youtube, playlist_id):
+    # 公式APIで再生リストの最新動画を1件調べる(1回1クォータ)
+    # 以前はRSSフィードを使っていたが、レート制限で404を頻発したため公式APIに戻した
+    try:
+        resp = youtube.playlistItems().list(
+            part="snippet", playlistId=playlist_id, maxResults=1
+        ).execute()
+    except Exception as e:
+        # 取得失敗(前回の値を維持するため、Noneを返して「新着なし」と区別する)
+        print(f"playlistItems failed for {playlist_id}: {str(e)[:120]}")
+        return None
 
-
-def has_recent_upload(playlist_id):
-    # 再生リストのRSSフィードを見て最新動画の投稿日時・タイトル・サムネを調べる
-    # 再生リストに最新の動画があるかどうか
-    root = fetch_feed(playlist_id)
-    if root is None:
-        return None  # 取得失敗(前回の値を維持するため、呼び出し側で判定する)
-
-    entry = root.find(f"{ATOM_NS}entry")
-    if entry is None:
+    items = resp.get("items", [])
+    if not items:
         return EMPTY_UPLOAD
 
+    snippet = items[0]["snippet"]
+
     # 24時間以内の投稿だったらTrueを返す
-    published_at = entry.find(f"{ATOM_NS}published").text
-    published_time = datetime.fromisoformat(published_at)
+    published_at = snippet["publishedAt"]
+    published_time = datetime.fromisoformat(published_at.replace("Z", "+00:00"))
     is_recent = datetime.now(timezone.utc) - published_time < timedelta(hours=24)
 
     if not is_recent:
         return EMPTY_UPLOAD
 
-    video_id = entry.find(f"{YT_NS}videoId").text
-    title = entry.find(f"{ATOM_NS}title").text
-    thumbnail_el = entry.find(f"{MEDIA_NS}group/{MEDIA_NS}thumbnail")
-    thumbnail = thumbnail_el.get("url") if thumbnail_el is not None else ""
+    thumbnails = snippet.get("thumbnails", {})
+    thumbnail = thumbnails.get("high", thumbnails.get("default", {})).get("url", "")
 
-    return {"is_recent": True, "video_id": video_id, "title": title, "thumbnail": thumbnail}
+    return {
+        "is_recent": True,
+        "video_id": snippet["resourceId"]["videoId"],
+        "title": snippet["title"],
+        "thumbnail": thumbnail,
+    }
 
 
 def get_youtube_view_count(youtube, video_id):
@@ -167,9 +152,9 @@ def fetch_live_data(channel, twitch_client_id, twitch_token):
     }
 
 
-def fetch_uploads(channels):
-    # 新着動画・ショートをRSSで取得する
-    # YouTubeのRSSはレート制限が厳しいので、並列にせず間隔を空けて直列に叩く
+def fetch_uploads(youtube, channels):
+    # 新着動画・ショートを公式APIで取得する
+    # APIクライアントはスレッドセーフではないので直列で実行する(1件0.3秒程度なので十分速い)
     uploads = {}
     for channel in channels:
         if channel.platform == "twitch":
@@ -178,10 +163,8 @@ def fetch_uploads(channels):
         video_playlist_id = channel.channel_id.replace("UC", "UULF", 1)
         short_playlist_id = channel.channel_id.replace("UC", "UUSH", 1)
 
-        video = has_recent_upload(video_playlist_id)
-        time.sleep(1.5)
-        short = has_recent_upload(short_playlist_id)
-        time.sleep(1.5)
+        video = has_recent_upload(youtube, video_playlist_id)
+        short = has_recent_upload(youtube, short_playlist_id)
 
         uploads[channel.id] = (video, short)
     return uploads
@@ -215,7 +198,7 @@ class Command(BaseCommand):
             ))
 
         # 新着動画チェックはfullモードの時だけ行う
-        uploads = fetch_uploads(channels) if mode == "full" else {}
+        uploads = fetch_uploads(youtube, channels) if mode == "full" else {}
 
         for result in results:
             channel = result["channel"]
