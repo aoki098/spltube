@@ -132,6 +132,7 @@ class HasRecentUploadTests(TestCase):
     @patch("streams.management.commands.check_status.requests.get")
     def test_24時間以内の投稿はis_recentがTrue(self, mock_get):
         今 = datetime.now(timezone.utc).isoformat()
+        mock_get.return_value.status_code = 200
         mock_get.return_value.content = self._fake_feed(今)
 
         result = has_recent_upload("UULFxxxxxxxxxxxxxxxxxxxxxx")
@@ -143,8 +144,19 @@ class HasRecentUploadTests(TestCase):
     @patch("streams.management.commands.check_status.requests.get")
     def test_25時間前の投稿はis_recentがFalse(self, mock_get):
         昔 = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+        mock_get.return_value.status_code = 200
         mock_get.return_value.content = self._fake_feed(昔)
 
         result = has_recent_upload("UULFxxxxxxxxxxxxxxxxxxxxxx")
 
         self.assertFalse(result["is_recent"])
+
+    @patch("streams.management.commands.check_status.requests.get")
+    def test_取得に失敗したらNoneを返す(self, mock_get):
+        # YouTube側が404や500を返した場合、「新着なし」ではなく「取得失敗(None)」を返す
+        mock_get.return_value.status_code = 404
+        mock_get.return_value.content = b"<html>not found</html>"
+
+        result = has_recent_upload("UULFxxxxxxxxxxxxxxxxxxxxxx")
+
+        self.assertIsNone(result)

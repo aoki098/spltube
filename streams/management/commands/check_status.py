@@ -1,7 +1,9 @@
 import os
 import re
+import time
 import requests
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from googleapiclient.discovery import build
@@ -80,17 +82,31 @@ MEDIA_NS = "{http://search.yahoo.com/mrss/}"
 EMPTY_UPLOAD = {"is_recent": False, "video_id": "", "title": "", "thumbnail": ""}
 
 
+def fetch_feed(playlist_id, retries=3):
+    # RSSフィードは時々404や500を返すので、数回リトライする
+    # 取得できなければNone(=「取得失敗」)を返す。「新着なし」とは区別する
+    for attempt in range(retries):
+        try:
+            resp = requests.get(
+                "https://www.youtube.com/feeds/videos.xml",
+                params={"playlist_id": playlist_id},
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                return ET.fromstring(resp.content)
+            print(f"feed fetch {playlist_id}: status {resp.status_code} (try {attempt + 1})")
+        except Exception as e:
+            print(f"feed fetch {playlist_id}: {e} (try {attempt + 1})")
+        time.sleep(1)
+    return None
+
+
 def has_recent_upload(playlist_id):
     # 再生リストのRSSフィードを見て最新動画の投稿日時・タイトル・サムネを調べる
     # 再生リストに最新の動画があるかどうか
-    try:
-        resp = requests.get(
-            "https://www.youtube.com/feeds/videos.xml",
-            params={"playlist_id": playlist_id},
-        )
-        root = ET.fromstring(resp.content)
-    except Exception:
-        return EMPTY_UPLOAD
+    root = fetch_feed(playlist_id)
+    if root is None:
+        return None  # 取得失敗(前回の値を維持するため、呼び出し側で判定する)
 
     entry = root.find(f"{ATOM_NS}entry")
     if entry is None:
@@ -122,7 +138,8 @@ def get_youtube_view_count(youtube, video_id):
 
 def compute_view_velocity(youtube, upload, previous_video_id, previous_view_count):
     # 動画/ショート共通: 再生数と、前回チェックからの伸びを計算する
-    if not upload["is_recent"]:
+    # uploadがNone(取得失敗)の場合も計算できないので0を返す
+    if upload is None or not upload["is_recent"]:
         return 0, 0
 
     view_count = get_youtube_view_count(youtube, upload["video_id"])
@@ -131,6 +148,35 @@ def compute_view_velocity(youtube, upload, previous_video_id, previous_view_coun
     else:
         view_velocity = 0
     return view_count, view_velocity
+
+def fetch_channel_data(channel, twitch_client_id, twitch_token):
+    # ネットワークからの取得だけを行う(DBには触らない)
+    # この関数が複数チャンネル分、並列で実行される
+    if channel.platform == "twitch":
+        live = get_twitch_stream(channel.channel_id, twitch_client_id, twitch_token)
+        return {
+            "channel": channel,
+            "video": EMPTY_UPLOAD,
+            "short": EMPTY_UPLOAD,
+            "live": live,
+            "live_video_id": None,
+        }
+
+    video_playlist_id = channel.channel_id.replace("UC", "UULF", 1)
+    short_playlist_id = channel.channel_id.replace("UC", "UUSH", 1)
+
+    video = has_recent_upload(video_playlist_id)
+    short = has_recent_upload(short_playlist_id)
+    is_live, live_video_id = check_youtube_live(channel.channel_id)
+
+    return {
+        "channel": channel,
+        "video": video,
+        "short": short,
+        "live": None,  # YouTube APIを使う部分は後でまとめて処理する
+        "live_video_id": live_video_id if is_live else None,
+    }
+
 
 #配信中か新着道があるかをDBに記録する
 class Command(BaseCommand):
@@ -143,24 +189,29 @@ class Command(BaseCommand):
         twitch_client_secret = os.environ["TWITCH_CLIENT_SECRET"]
         twitch_token = get_twitch_access_token(twitch_client_id, twitch_client_secret)
 
-        for channel in RegisteredChannel.objects.all():
+        channels = list(RegisteredChannel.objects.all())
+
+        # ネットワーク取得だけを並列で実行する(通信待ちの時間を重ねられるので速くなる)
+        # DBとYouTube APIの処理は、この後メインスレッドでまとめて行う
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            results = list(executor.map(
+                lambda c: fetch_channel_data(c, twitch_client_id, twitch_token),
+                channels,
+            ))
+
+        for result in results:
+            channel = result["channel"]
+            video = result["video"]
+            short = result["short"]
             previous_status = ChannelStatus.objects.filter(which_channel=channel).first()
 
             if channel.platform == "twitch":
-                live = get_twitch_stream(channel.channel_id, twitch_client_id, twitch_token)
-                video = EMPTY_UPLOAD
-                short = EMPTY_UPLOAD
+                live = result["live"]
                 view_count = 0
                 view_velocity = 0
                 short_view_count = 0
                 short_view_velocity = 0
             else:
-                video_playlist_id = channel.channel_id.replace("UC", "UULF", 1)
-                short_playlist_id = channel.channel_id.replace("UC", "UUSH", 1)
-
-                video = has_recent_upload(video_playlist_id)
-                short = has_recent_upload(short_playlist_id)
-
                 prev_video_id = previous_status.latest_video_id if previous_status else ""
                 prev_video_views = previous_status.latest_video_view_count if previous_status else 0
                 view_count, view_velocity = compute_view_velocity(
@@ -173,36 +224,50 @@ class Command(BaseCommand):
                     youtube, short, prev_short_id, prev_short_views
                 )
 
-                is_live, video_id = check_youtube_live(channel.channel_id)
-                if is_live and video_id:
-                    live = get_youtube_live_details(youtube, video_id)
+                if result["live_video_id"]:
+                    live = get_youtube_live_details(youtube, result["live_video_id"])
                 else:
                     live = EMPTY_LIVE
 
-            # DB
-            ChannelStatus.objects.update_or_create(
-                which_channel=channel,
-                defaults={
-                    "is_live": live["is_live"],
+            # 配信中の情報は毎回更新する
+            defaults = {
+                "is_live": live["is_live"],
+                "live_title": live["title"],
+                "live_thumbnail": live["thumbnail"],
+                "viewer_count": live["viewer_count"],
+            }
+
+            # 動画・ショートは「取得できた時だけ」更新する
+            # (取得失敗(None)の時に上書きすると、前回の正しい情報が消えてしまうため)
+            if video is not None:
+                defaults.update({
                     "new_video_exist": video["is_recent"],
-                    "new_short_exist": short["is_recent"],
                     "latest_video_id": video["video_id"],
                     "latest_video_title": video["title"],
                     "latest_video_thumbnail": video["thumbnail"],
                     "latest_video_view_count": view_count,
                     "latest_video_view_velocity": view_velocity,
+                })
+
+            if short is not None:
+                defaults.update({
+                    "new_short_exist": short["is_recent"],
                     "latest_short_id": short["video_id"],
                     "latest_short_title": short["title"],
                     "latest_short_thumbnail": short["thumbnail"],
                     "latest_short_view_count": short_view_count,
                     "latest_short_view_velocity": short_view_velocity,
-                    "live_title": live["title"],
-                    "live_thumbnail": live["thumbnail"],
-                    "viewer_count": live["viewer_count"],
-                },
+                })
+
+            # DB
+            ChannelStatus.objects.update_or_create(
+                which_channel=channel,
+                defaults=defaults,
             )
 
+            video_result = "取得失敗" if video is None else video["is_recent"]
+            short_result = "取得失敗" if short is None else short["is_recent"]
             self.stdout.write(
                 f"{channel.channel_name} ({channel.platform}): live={live['is_live']}, "
-                f"video={video['is_recent']}, short={short['is_recent']}, viewers={live['viewer_count']}"
+                f"video={video_result}, short={short_result}, viewers={live['viewer_count']}"
             )
