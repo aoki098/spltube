@@ -108,6 +108,12 @@ def get_youtube_live_details(details, video_id):
         return None
 
     snippet = item.get("snippet", {})
+
+    # 配信待機所(開始前)のページも配信中と同じHTMLになるので、APIの値で確かめる
+    # liveBroadcastContentは live(配信中) / upcoming(開始前) / none(通常の動画) のどれか
+    if snippet.get("liveBroadcastContent") != "live":
+        return EMPTY_LIVE
+
     thumbnails = snippet.get("thumbnails", {})
     return {
         "is_live": True,
