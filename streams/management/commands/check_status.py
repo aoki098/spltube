@@ -49,13 +49,29 @@ def get_twitch_stream(username, client_id, access_token):
 
 def check_youtube_live(channel_id):
     # チャンネルの/liveページを直接見て配信中か判定する
-    resp = requests.get(f"https://www.youtube.com/channel/{channel_id}/live")
-    is_live = '"isLiveNow":true' in resp.text
+    try:
+        resp = requests.get(f"https://www.youtube.com/channel/{channel_id}/live", timeout=30)
+    except Exception as e:
+        # 取得失敗(前回の値を維持するため、Noneを返して「配信していない」と区別する)
+        print(f"live page failed for {channel_id}: {str(e)[:120]}")
+        return None, None
+
+    if resp.status_code != 200:
+        print(f"live page failed for {channel_id}: status={resp.status_code}")
+        return None, None
+
+    # 配信中だと/liveは視聴ページを返し、メインの動画情報にこの印が付く
+    # (以前は"isLiveNow":trueを見ていたが、YouTube側のHTMLが変わって使えなくなった)
+    is_live = '"isLive":true' in resp.text
+
     video_id = None
     if is_live:
-        match = re.search(r'"videoId":"([\w-]{11})"', resp.text)
+        # ページ内に最初に出てくるvideoIdはおすすめ動画のものなので使えない
+        # 「今このページが開いている動画」を指すcurrentVideoEndpointから取る
+        match = re.search(r'"currentVideoEndpoint":\{.*?"videoId":"([\w-]{11})"', resp.text)
         if match:
             video_id = match.group(1)
+
     return is_live, video_id
 
 
@@ -175,6 +191,7 @@ def fetch_live_data(channel, twitch_client_id, twitch_token):
             "channel": channel,
             "live": get_twitch_stream(channel.channel_id, twitch_client_id, twitch_token),
             "live_video_id": None,
+            "live_check_failed": False,
         }
 
     is_live, live_video_id = check_youtube_live(channel.channel_id)
@@ -182,6 +199,7 @@ def fetch_live_data(channel, twitch_client_id, twitch_token):
         "channel": channel,
         "live": None,  # YouTube APIを使う部分は後でまとめて処理する
         "live_video_id": live_video_id if is_live else None,
+        "live_check_failed": is_live is None,
     }
 
 
@@ -275,7 +293,11 @@ class Command(BaseCommand):
                 else:
                     live = EMPTY_LIVE
 
-            if live is not None:
+            if result["live_check_failed"]:
+                # 配信ページ自体が取得できなかった場合
+                # (配信していないのか取得に失敗したのか区別できないので、前回の値を残す)
+                defaults = {} if previous_status else {"is_live": False}
+            elif live is not None:
                 # 配信中の情報は毎回更新する
                 defaults = {
                     "is_live": live["is_live"],
@@ -323,8 +345,15 @@ class Command(BaseCommand):
                 short_result = "取得失敗" if short is None else short["is_recent"]
                 upload_result = f"video={video_result}, short={short_result}"
 
-            live_result = "True(詳細取得失敗)" if live is None else live["is_live"]
-            viewers = 0 if live is None else live["viewer_count"]
+            if result["live_check_failed"]:
+                live_result = "取得失敗"
+                viewers = 0
+            elif live is None:
+                live_result = "True(詳細取得失敗)"
+                viewers = 0
+            else:
+                live_result = live["is_live"]
+                viewers = live["viewer_count"]
 
             self.stdout.write(
                 f"{channel.channel_name} ({channel.platform}): "

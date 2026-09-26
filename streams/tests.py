@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import httplib2
 from googleapiclient.errors import HttpError
 from django.test import TestCase
 from .models import RegisteredChannel, ChannelStatus
 from .management.commands.check_status import (
+    check_youtube_live,
     fetch_video_details,
     get_youtube_live_details,
     get_youtube_view_count,
@@ -176,6 +177,57 @@ class HasRecentUploadTests(TestCase):
 
         self.assertIsNotNone(result)
         self.assertFalse(result["is_recent"])
+
+
+class CheckYoutubeLiveTests(TestCase):
+    # check_youtube_liveは/liveページのHTMLを見て配信中か判定する
+    # 本物のページは1MB以上あるので、判定に必要な部分だけを持つ偽のHTMLを使う
+
+    def _fake_get(self, text, status_code=200):
+        response = MagicMock()
+        response.text = text
+        response.status_code = status_code
+        return patch("streams.management.commands.check_status.requests.get",
+                     return_value=response)
+
+    # 配信中のページの構造(おすすめ動画のvideoIdが先に出てくるのが再現ポイント)
+    配信中のHTML = (
+        '{"videoId":"osusumeVID1"}'
+        '"viewCount":{"videoViewCountRenderer":{"isLive":true}}'
+        '"currentVideoEndpoint":{"clickTrackingParams":"xxx",'
+        '"watchEndpoint":{"videoId":"haishinVID1"}}'
+    )
+
+    def test_配信中ならTrueと配信の動画IDを返す(self):
+        with self._fake_get(self.配信中のHTML):
+            is_live, video_id = check_youtube_live("UCtestxxxxxxxxxxxxxxxxx")
+
+        self.assertTrue(is_live)
+        # ページ先頭のおすすめ動画ではなく、今開いている配信のIDが取れること
+        self.assertEqual(video_id, "haishinVID1")
+
+    def test_配信していなければFalseを返す(self):
+        with self._fake_get('{"videoId":"osusumeVID1"}チャンネルページの中身'):
+            is_live, video_id = check_youtube_live("UCtestxxxxxxxxxxxxxxxxx")
+
+        self.assertFalse(is_live)
+        self.assertIsNone(video_id)
+
+    def test_ページが取得できなかったらNoneを返す(self):
+        # 429などで弾かれた場合、「配信していない」と誤って判定してはいけない
+        with self._fake_get("", status_code=429):
+            is_live, video_id = check_youtube_live("UCtestxxxxxxxxxxxxxxxxx")
+
+        self.assertIsNone(is_live)
+        self.assertIsNone(video_id)
+
+    def test_通信自体が失敗してもNoneを返す(self):
+        with patch("streams.management.commands.check_status.requests.get",
+                   side_effect=Exception("connection error")):
+            is_live, video_id = check_youtube_live("UCtestxxxxxxxxxxxxxxxxx")
+
+        self.assertIsNone(is_live)
+        self.assertIsNone(video_id)
 
 
 class FetchVideoDetailsTests(TestCase):
