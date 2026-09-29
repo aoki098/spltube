@@ -3,7 +3,12 @@ from unittest.mock import MagicMock, patch
 import httplib2
 from googleapiclient.errors import HttpError
 from django.test import TestCase
+from django.utils import timezone as django_timezone
 from .models import RegisteredChannel, ChannelStatus
+from .management.commands.check_health import (
+    check_data_freshness,
+    check_live_detection,
+)
 from .management.commands.check_status import (
     check_youtube_live,
     fetch_video_details,
@@ -228,6 +233,65 @@ class CheckYoutubeLiveTests(TestCase):
 
         self.assertIsNone(is_live)
         self.assertIsNone(video_id)
+
+
+class CheckHealthTests(TestCase):
+    # check_healthは「壊れていることに気づけない」状態を防ぐための監視
+    # 異常があれば説明の文字列を、問題なければNoneを返す作りになっている
+
+    def _偽の判定(self, is_live, video_id):
+        return patch("streams.management.commands.check_health.check_youtube_live",
+                     return_value=(is_live, video_id))
+
+    def test_常時配信が検知できていれば異常なし(self):
+        with self._偽の判定(True, "haishinVID1"):
+            self.assertIsNone(check_live_detection())
+
+    def test_常時配信が検知できなければ異常とみなす(self):
+        # ページの構造が変わってYouTubeの配信を拾えなくなった状態
+        with self._偽の判定(False, None):
+            結果 = check_live_detection()
+
+        self.assertIsNotNone(結果)
+        self.assertIn("構造", 結果)
+
+    def test_ページを取得できなければ異常とみなす(self):
+        with self._偽の判定(None, None):
+            self.assertIsNotNone(check_live_detection())
+
+    def test_動画IDが取れなければ異常とみなす(self):
+        with self._偽の判定(True, None):
+            self.assertIsNotNone(check_live_detection())
+
+    def test_データが新しければ異常なし(self):
+        channel = RegisteredChannel.objects.create(
+            channel_id="UCtestxxxxxxxxxxxxxxxxx",
+            channel_name="テストチャンネル",
+            channel_icon="https://example.com/icon.png",
+        )
+        ChannelStatus.objects.create(which_channel=channel, is_live=False)
+
+        self.assertIsNone(check_data_freshness())
+
+    def test_データが古ければ異常とみなす(self):
+        # cronが止まってDBが更新されなくなった状態
+        channel = RegisteredChannel.objects.create(
+            channel_id="UCtestxxxxxxxxxxxxxxxxx",
+            channel_name="テストチャンネル",
+            channel_icon="https://example.com/icon.png",
+        )
+        status = ChannelStatus.objects.create(which_channel=channel, is_live=False)
+        # checked_atはauto_nowなので、保存後にupdateで直接書き換える
+        古い時刻 = django_timezone.now() - timedelta(hours=3)
+        ChannelStatus.objects.filter(pk=status.pk).update(checked_at=古い時刻)
+
+        結果 = check_data_freshness()
+
+        self.assertIsNotNone(結果)
+        self.assertIn("更新されていません", 結果)
+
+    def test_チャンネルが1件もなければ異常とみなす(self):
+        self.assertIsNotNone(check_data_freshness())
 
 
 class FetchVideoDetailsTests(TestCase):
