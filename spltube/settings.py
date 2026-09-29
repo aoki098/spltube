@@ -117,6 +117,12 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
+# 自分で用意した画像などを置く場所
+STATICFILES_DIRS = [BASE_DIR / 'static']
+
+# collectstaticで集める先。本番ではnginxがこのフォルダを直接配信する
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
