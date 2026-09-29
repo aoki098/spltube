@@ -7,21 +7,10 @@ from dotenv import load_dotenv
 from googleapiclient.discovery import build
 from django.core.management.base import BaseCommand
 from streams.models import RegisteredChannel, ChannelStatus
+from streams.twitch import get_twitch_access_token
 
 
-def get_twitch_access_token(client_id, client_secret):
-    resp = requests.post(
-        "https://id.twitch.tv/oauth2/token",
-        params={
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "grant_type": "client_credentials",
-        },
-    )
-    return resp.json()["access_token"]
-
-
-EMPTY_LIVE = {"is_live": False, "viewer_count": 0, "title": "", "thumbnail": ""}
+EMPTY_LIVE ={"is_live": False, "viewer_count": 0, "title": "", "thumbnail": ""}
 
 
 def get_twitch_stream(username, client_id, access_token):

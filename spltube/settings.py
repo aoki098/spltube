@@ -40,6 +40,16 @@ CSRF_COOKIE_SECURE = not DEBUG
 
 # Application definition
 
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'streams.apps.StreamsConfig',
+]
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
@@ -122,18 +132,4 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 
 # collectstaticで集める先。本番ではnginxがこのフォルダを直接配信する
 STATIC_ROOT = BASE_DIR / 'staticfiles'
-
-
-# Email
-# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
-
-INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'streams.apps.StreamsConfig',
-]
 

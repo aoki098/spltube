@@ -3,18 +3,7 @@ import requests
 from dotenv import load_dotenv
 from django.core.management.base import BaseCommand
 from streams.models import RegisteredChannel
-
-
-def get_twitch_access_token(client_id, client_secret):
-    resp = requests.post(
-        "https://id.twitch.tv/oauth2/token",
-        params={
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "grant_type": "client_credentials",
-        },
-    )
-    return resp.json()["access_token"]
+from streams.twitch import get_twitch_access_token
 
 
 class Command(BaseCommand):
