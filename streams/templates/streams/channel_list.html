@@ -117,9 +117,16 @@
             color: var(--text);
         }
 
+        /* 同じ行に並ぶカードの高さをそろえる */
+        .grid > li {
+            display: flex;
+        }
+
         /* カード共通(配信中・新着動画・新着ショートで共有) */
         .media-card {
-            display: block;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
             border-radius: 12px;
             overflow: hidden;
             border: 1px solid #ececE4;
@@ -163,6 +170,8 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            /* これがないと長い名前がカードを押し広げてしまう(flexの初期値が縮小を許さないため) */
+            min-width: 0;
         }
 
         .media-card .thumb-wrap {
@@ -175,6 +184,7 @@
             object-fit: cover;
             display: block;
             background: #eee;
+            flex-shrink: 0;
         }
 
         .viewer-badge {
@@ -199,7 +209,8 @@
             font-size: 0.85rem;
             font-weight: 700;
             line-height: 1.4;
-            min-height: 2.4em;
+            /* 2行ぶんの高さで固定する(1行のカードと2行のカードで高さがずれないように) */
+            min-height: 2.8em;
         }
 
         footer {
@@ -213,6 +224,71 @@
             margin: 0 auto;
             font-size: 0.72rem;
             color: var(--text-dim);
+        }
+
+        /* スマホ表示: 幅が狭いと1列になって縦に長くなるので、2列に詰めて表示する */
+        @media (max-width: 600px) {
+            .layout {
+                padding: 0 10px 40px;
+            }
+
+            .panel {
+                padding: 12px;
+                border-radius: 13px;
+            }
+
+            .panel-wrap {
+                border-radius: 16px;
+            }
+
+            h2 {
+                margin: 18px 0 12px;
+                padding-left: 9px;
+                border-left-width: 5px;
+                font-size: 1.05rem;
+            }
+
+            /* 入るだけ並べるのではなく、2列と決め打ちする
+               1frではなくminmax(0, 1fr)にしないと、長いチャンネル名が列を押し広げてはみ出す */
+            .grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 10px;
+            }
+
+            /* カードの中身も幅に合わせて小さくする */
+            .media-card .card-header {
+                gap: 6px;
+                padding: 5px 7px;
+            }
+
+            .media-card .card-icon {
+                width: 32px;
+                height: 32px;
+            }
+
+            .live-card .card-icon {
+                border-width: 3px;
+            }
+
+            .video-card .card-icon {
+                border-width: 2px;
+            }
+
+            .media-card .channel-name {
+                font-size: 0.68rem;
+            }
+
+            .media-card .video-title {
+                padding: 6px 8px;
+                font-size: 0.72rem;
+            }
+
+            .viewer-badge {
+                top: 4px;
+                right: 4px;
+                font-size: 0.62rem;
+                padding: 1px 5px;
+            }
         }
     </style>
 </head>
