@@ -133,3 +133,16 @@ STATICFILES_DIRS = [BASE_DIR / 'static']
 # collectstaticで集める先。本番ではnginxがこのフォルダを直接配信する
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
+# ファイル名に中身のハッシュを付ける(ogp.png -> ogp.a1b2c3d4.png)
+# nginxで長期キャッシュを効かせているため、中身を変えたらURLも変わるようにする
+# collectstaticを実行した環境でしか使えない(対応表が必要)ので、本番でだけ有効にする
+if os.environ.get('USE_HASHED_STATIC', 'False') == 'True':
+    STORAGES = {
+        'default': {
+            'BACKEND': 'django.core.files.storage.FileSystemStorage',
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.ManifestStaticFilesStorage',
+        },
+    }
+
