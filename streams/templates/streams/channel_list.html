@@ -297,7 +297,7 @@
         <h1>splive</h1>
     </header>
 
-    <div class="layout">
+    <main class="layout">
         <h2>配信中</h2>
         <div class="panel-wrap">
             <div class="panel">
@@ -310,11 +310,11 @@
                             <a class="card media-card live-card" href="https://www.youtube.com/channel/{{ status.which_channel.channel_id }}/live" target="_blank">
                             {% endif %}
                                 <span class="card-header">
-                                    <img class="card-icon" src="{{ status.which_channel.channel_icon }}" alt="">
+                                    <img class="card-icon" {% if forloop.counter > 4 %}loading="lazy"{% endif %} src="{{ status.which_channel.channel_icon }}" alt="">
                                     <span class="channel-name">{{ status.which_channel.channel_name }}</span>
                                 </span>
                                 <span class="thumb-wrap">
-                                    <img class="thumb" src="{{ status.live_thumbnail }}" alt="">
+                                    <img class="thumb" {% if forloop.counter > 4 %}loading="lazy"{% endif %} src="{{ status.live_thumbnail }}" alt="">
                                     <span class="viewer-badge">{{ status.viewer_count }}人</span>
                                 </span>
                                 <span class="video-title">{{ status.live_title }}</span>
@@ -333,10 +333,10 @@
                         <li>
                             <a class="card media-card video-card" href="https://www.youtube.com/watch?v={{ status.latest_video_id }}" target="_blank">
                                 <span class="card-header">
-                                    <img class="card-icon" src="{{ status.which_channel.channel_icon }}" alt="">
+                                    <img class="card-icon" loading="lazy" src="{{ status.which_channel.channel_icon }}" alt="">
                                     <span class="channel-name">{{ status.which_channel.channel_name }}</span>
                                 </span>
-                                <img class="thumb" src="{{ status.latest_video_thumbnail }}" alt="">
+                                <img class="thumb" loading="lazy" src="{{ status.latest_video_thumbnail }}" alt="">
                                 <span class="video-title">{{ status.latest_video_title }}</span>
                             </a>
                         </li>
@@ -353,10 +353,10 @@
                         <li>
                             <a class="card media-card video-card" href="https://www.youtube.com/shorts/{{ status.latest_short_id }}" target="_blank">
                                 <span class="card-header">
-                                    <img class="card-icon" src="{{ status.which_channel.channel_icon }}" alt="">
+                                    <img class="card-icon" loading="lazy" src="{{ status.which_channel.channel_icon }}" alt="">
                                     <span class="channel-name">{{ status.which_channel.channel_name }}</span>
                                 </span>
-                                <img class="thumb" src="{{ status.latest_short_thumbnail }}" alt="">
+                                <img class="thumb" loading="lazy" src="{{ status.latest_short_thumbnail }}" alt="">
                                 <span class="video-title">{{ status.latest_short_title }}</span>
                             </a>
                         </li>
@@ -364,7 +364,7 @@
                 </ul>
             </div>
         </div>
-    </div>
+    </main>
 
     <footer>
         <p>本サイトは非公式のファンサイトです。掲載しているチャンネル名・アイコン・動画情報の著作権は各配信者に帰属します。</p>
