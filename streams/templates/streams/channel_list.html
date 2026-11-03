@@ -3,6 +3,15 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
+    {% if use_analytics %}
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XRJX5GXL9E"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-XRJX5GXL9E');
+    </script>
+    {% endif %}
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>splive(スプライブ) - スプラ配信まとめ</title>
 
@@ -226,6 +235,14 @@
             color: var(--text-dim);
         }
 
+        footer p + p {
+            margin-top: 6px;
+        }
+
+        footer a {
+            color: inherit;
+        }
+
         /* スマホ表示: 幅が狭いと1列になって縦に長くなるので、2列に詰めて表示する */
         @media (max-width: 600px) {
             .layout {
@@ -368,6 +385,7 @@
 
     <footer>
         <p>本サイトは非公式のファンサイトです。掲載しているチャンネル名・アイコン・動画情報の著作権は各配信者に帰属します。</p>
+        <p>本サイトはアクセス解析のためにGoogle アナリティクスを使用しています。データはCookieを使って匿名で収集されており、個人を特定するものではありません。詳しくは<a href="https://policies.google.com/technologies/partner-sites?hl=ja" target="_blank" rel="noopener">こちら</a>をご覧ください。</p>
     </footer>
 </body>
 </html>

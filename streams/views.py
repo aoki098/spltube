@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.shortcuts import render
 from .models import ChannelStatus
 
@@ -10,4 +11,5 @@ def channel_list(request):
         "live": live,
         "videos": videos,
         "shorts": shorts,
+        "use_analytics": not settings.DEBUG,
     })
